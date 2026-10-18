@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { api, type Platform, type Profile, type UploadStatus } from "./api";
-import { PLATFORM_LABELS } from "./labels";
+import { ACCEPTED_IMAGE_TYPES, IMAGE_FORMATS, firstImageIssue } from "../server/lib/postFormats";
+import { api, type ImageFormat, type Platform, type Profile, type UploadStatus } from "./api";
+import { FORMAT_LABELS, PLATFORM_LABELS } from "./labels";
 
-const MAX_BYTES = 8 * 1024 * 1024;
 const POLL_MS = 5000;
 const MAX_POLLS = 60;
 
@@ -22,6 +22,7 @@ export function UploadPanel({ profile, onError }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [caption, setCaption] = useState("");
+  const [format, setFormat] = useState<ImageFormat>("feed");
   const [selected, setSelected] = useState<Platform[]>([]);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<UploadStatus | null>(null);
@@ -50,10 +51,6 @@ export function UploadPanel({ profile, onError }: Props) {
 
   function pick(next: File | null) {
     setStatus(null);
-    if (next && next.size > MAX_BYTES) {
-      onError("Image must be 8 MB or smaller");
-      return;
-    }
     setFile(next);
   }
 
@@ -88,7 +85,7 @@ export function UploadPanel({ profile, onError }: Props) {
     setBusy(true);
     setStatus({ status: "queued", done: false, completed: 0, total: selected.length, message: null, results: [] });
     try {
-      const requestId = await api.upload(profile.username, selected, file, caption);
+      const requestId = await api.upload(profile.username, selected, format, file, caption);
       poll(requestId, 1);
     } catch (error) {
       setBusy(false);
@@ -96,6 +93,8 @@ export function UploadPanel({ profile, onError }: Props) {
       onError(error instanceof Error ? error.message : "Upload failed");
     }
   }
+
+  const issue = file ? firstImageIssue(selected, format, file) : null;
 
   if (available.length === 0) {
     return (
@@ -113,21 +112,37 @@ export function UploadPanel({ profile, onError }: Props) {
         <label className="file">
           <input
             type="file"
-            accept="image/jpeg,image/png,image/webp,image/gif"
+            accept={ACCEPTED_IMAGE_TYPES.join(",")}
             onChange={(event) => pick(event.target.files?.[0] ?? null)}
           />
           <span className="primary">{file ? "Choose a different image" : "Choose from gallery"}</span>
         </label>
         {preview && <img className="preview" src={preview} alt="Selected" />}
-        <label className="field">
-          <span>Caption</span>
-          <textarea
-            value={caption}
-            onChange={(event) => setCaption(event.target.value)}
-            maxLength={2200}
-            rows={3}
-          />
-        </label>
+        <div className="segmented" role="radiogroup" aria-label="Post type">
+          {IMAGE_FORMATS.map((option) => (
+            <button
+              key={option}
+              type="button"
+              role="radio"
+              aria-checked={format === option}
+              className={format === option ? "primary" : "ghost"}
+              onClick={() => setFormat(option)}
+            >
+              {FORMAT_LABELS[option]}
+            </button>
+          ))}
+        </div>
+        {format === "feed" && (
+          <label className="field">
+            <span>Caption</span>
+            <textarea
+              value={caption}
+              onChange={(event) => setCaption(event.target.value)}
+              maxLength={2200}
+              rows={3}
+            />
+          </label>
+        )}
         <fieldset className="platforms">
           <legend>Post to</legend>
           {available.map((platform) => (
@@ -141,10 +156,15 @@ export function UploadPanel({ profile, onError }: Props) {
             </label>
           ))}
         </fieldset>
+        {issue && (
+          <p className="issue" role="alert">
+            {issue.message}
+          </p>
+        )}
         <button
           type="submit"
           className="primary"
-          disabled={busy || !file || selected.length === 0}
+          disabled={busy || !file || selected.length === 0 || issue !== null}
         >
           {busy ? "Posting…" : "Post"}
         </button>

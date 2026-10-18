@@ -1,6 +1,7 @@
+import type { ImageFormat } from "../server/lib/postFormats";
 import type { FacebookPages, Platform, Profile, UploadStatus } from "../server/lib/uploadPost";
 
-export type { FacebookPages, Platform, Profile, UploadStatus };
+export type { FacebookPages, ImageFormat, Platform, Profile, UploadStatus };
 
 export class ApiError extends Error {}
 
@@ -49,9 +50,16 @@ export const api = {
   pinFacebookPage: (profile: string, pageId: string) =>
     call<{ ok: true }>("/facebook-pages", jsonBody({ profile, pageId })),
 
-  upload: (profile: string, platforms: Platform[], file: File, caption: string) => {
+  upload: (
+    profile: string,
+    platforms: Platform[],
+    format: ImageFormat,
+    file: File,
+    caption: string,
+  ) => {
     const form = new FormData();
     form.set("profile", profile);
+    form.set("format", format);
     for (const platform of platforms) form.append("platforms", platform);
     form.set("file", file);
     form.set("caption", caption);

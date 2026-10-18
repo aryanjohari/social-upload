@@ -67,8 +67,59 @@ describe("social router", () => {
     const body = (await response.json()) as { requestId: string };
     expect(body.requestId).toMatch(/^[0-9a-f-]{36}$/);
     expect(client.uploadPhoto).toHaveBeenCalledWith(
-      expect.objectContaining({ profile: "acme", platforms: ["instagram", "facebook"], caption: "hi" }),
+      expect.objectContaining({
+        profile: "acme",
+        platforms: ["instagram", "facebook"],
+        format: "feed",
+        caption: "hi",
+      }),
     );
+  });
+
+  it("posts a story without a caption", async () => {
+    const { app, client } = setup();
+    const response = await app.request("/upload", {
+      method: "POST",
+      body: uploadForm({ profile: "acme", platforms: ["facebook"], format: "story", caption: "ignored", file: png() }),
+    });
+    expect(response.status).toBe(202);
+    expect(client.uploadPhoto).toHaveBeenCalledWith(
+      expect.objectContaining({ format: "story", caption: "" }),
+    );
+  });
+
+  it("rejects the whole post when one platform's limit is exceeded", async () => {
+    const { app, client } = setup();
+    const sixMb = new File([new Uint8Array(6 * 1024 * 1024)], "a.png", { type: "image/png" });
+    const response = await app.request("/upload", {
+      method: "POST",
+      body: uploadForm({ profile: "acme", platforms: ["instagram", "facebook"], file: sixMb }),
+    });
+    expect(response.status).toBe(413);
+    expect(((await response.json()) as { error: string }).error).toContain("Facebook");
+    expect(client.uploadPhoto).not.toHaveBeenCalled();
+  });
+
+  it("allows a larger image for a Facebook story than for a Facebook feed post", async () => {
+    const { app } = setup();
+    const sixMb = () => new File([new Uint8Array(6 * 1024 * 1024)], "a.png", { type: "image/png" });
+    const send = (format: string) =>
+      app.request("/upload", {
+        method: "POST",
+        body: uploadForm({ profile: "acme", platforms: ["facebook"], format, file: sixMb() }),
+      });
+    expect((await send("feed")).status).toBe(413);
+    expect((await send("story")).status).toBe(202);
+  });
+
+  it("rejects WebP for Instagram and unknown formats", async () => {
+    const { app } = setup();
+    const webp = new File(["x"], "a.webp", { type: "image/webp" });
+    const send = (fields: Record<string, string | string[] | File>) =>
+      app.request("/upload", { method: "POST", body: uploadForm(fields) });
+    expect((await send({ profile: "acme", platforms: ["instagram"], file: webp })).status).toBe(415);
+    expect((await send({ profile: "acme", platforms: ["facebook"], file: webp })).status).toBe(202);
+    expect((await send({ profile: "acme", platforms: ["facebook"], format: "reel", file: png() })).status).toBe(400);
   });
 
   it("rejects wrong types, oversize files and missing platforms", async () => {

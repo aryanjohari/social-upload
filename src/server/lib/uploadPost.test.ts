@@ -48,6 +48,7 @@ describe("createUploadPostClient", () => {
     await client.uploadPhoto({
       profile: "acme",
       platforms: ["instagram", "facebook"],
+      format: "feed",
       file: new Blob(["x"], { type: "image/png" }),
       fileName: "a.png",
       caption: "hello",
@@ -62,7 +63,27 @@ describe("createUploadPostClient", () => {
     expect(form.get("request_id")).toBe("req-1");
     expect(form.get("user")).toBe("acme");
     expect(form.getAll("photos[]")).toHaveLength(1);
+    expect(form.get("media_type")).toBe("IMAGE");
+    expect(form.get("facebook_media_type")).toBe("POSTS");
     expect(headers.get("Idempotency-Key")).toBe("req-1");
+  });
+
+  it("marks a photo story on each selected platform only", async () => {
+    const fetchImpl = mockFetch(200, { success: true });
+    const client = createUploadPostClient({ apiKey: "k", fetchImpl });
+    await client.uploadPhoto({
+      profile: "acme",
+      platforms: ["instagram"],
+      format: "story",
+      file: new Blob(["x"], { type: "image/png" }),
+      fileName: "a.png",
+      caption: "",
+      requestId: "req-2",
+    });
+    const form = lastCall(fetchImpl).init.body as FormData;
+    expect(form.get("media_type")).toBe("STORIES");
+    expect(form.has("facebook_media_type")).toBe(false);
+    expect(form.has("title")).toBe(false);
   });
 
   it("surfaces upstream errors with status and code", async () => {

@@ -1,10 +1,8 @@
 import { z } from "zod";
+import { imageUpstreamFields, type ImageFormat } from "./postFormats";
 
 export const PLATFORMS = ["instagram", "facebook"] as const;
 export type Platform = (typeof PLATFORMS)[number];
-
-export const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
-export const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"] as const;
 
 const socialAccountSchema = z
   .object({
@@ -89,6 +87,7 @@ export type UploadStatus = {
 export type PhotoUpload = {
   profile: string;
   platforms: Platform[];
+  format: ImageFormat;
   file: Blob;
   fileName: string;
   caption: string;
@@ -237,6 +236,9 @@ export function createUploadPostClient({ apiKey, baseUrl, fetchImpl }: ClientOpt
       form.set("user", upload.profile);
       for (const platform of upload.platforms) form.append("platform[]", platform);
       form.append("photos[]", upload.file, upload.fileName);
+      for (const [field, value] of Object.entries(imageUpstreamFields(upload.platforms, upload.format))) {
+        form.set(field, value);
+      }
       if (upload.caption) form.set("title", upload.caption);
       if (upload.facebookPageId) form.set("facebook_page_id", upload.facebookPageId);
       form.set("async_upload", "true");

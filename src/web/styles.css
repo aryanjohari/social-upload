@@ -169,6 +169,18 @@ button:disabled {
   width: 100%;
 }
 
+.segmented {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.issue {
+  margin: 0;
+  color: var(--bad);
+  font-size: 0.9rem;
+}
+
 .preview {
   width: 100%;
   max-height: 320px;

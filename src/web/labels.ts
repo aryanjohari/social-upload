@@ -1,9 +1,4 @@
-import type { Platform } from "./api";
-
-export const PLATFORM_LABELS: Record<Platform, string> = {
-  instagram: "Instagram",
-  facebook: "Facebook",
-};
+export { FORMAT_LABELS, PLATFORM_LABELS } from "../server/lib/postFormats";
 
 export const CONNECT_ERRORS: Record<string, string> = {
   ACCESS_DENIED: "You closed the authorization window.",

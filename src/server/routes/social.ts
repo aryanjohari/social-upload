@@ -1,12 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import {
-  IMAGE_TYPES,
-  MAX_IMAGE_BYTES,
-  PLATFORMS,
-  UploadPostError,
-  type UploadPostClient,
-} from "../lib/uploadPost";
+import { IMAGE_FORMATS, firstImageIssue } from "../lib/postFormats";
+import { PLATFORMS, UploadPostError, type UploadPostClient } from "../lib/uploadPost";
 
 type SocialRouterOptions = {
   client: UploadPostClient;
@@ -15,6 +10,7 @@ type SocialRouterOptions = {
 
 const profileName = z.string().regex(/^[A-Za-z0-9_@-]{1,64}$/);
 const platformSchema = z.enum(PLATFORMS);
+const formatSchema = z.enum(IMAGE_FORMATS);
 
 const createProfileBody = z.object({
   username: profileName,
@@ -89,26 +85,28 @@ export function createSocialRouter({ client, connectReturnUrl }: SocialRouterOpt
       .array(platformSchema)
       .min(1)
       .safeParse(form.getAll("platforms"));
+    const format = formatSchema.safeParse(form.get("format") ?? "feed");
     const file = form.get("file");
     const caption = String(form.get("caption") ?? "").slice(0, 2200);
 
     if (!profile.success) return failure(400, "Invalid profile", "invalid_profile");
     if (!platforms.success) return failure(400, "Pick at least one platform", "invalid_platforms");
+    if (!format.success) return failure(400, "Unknown post format", "invalid_format");
     if (!(file instanceof File)) return failure(400, "Choose an image", "missing_file");
-    if (!(IMAGE_TYPES as readonly string[]).includes(file.type)) {
-      return failure(415, "Use a JPEG, PNG, WebP or GIF image", "unsupported_type");
-    }
-    if (file.size > MAX_IMAGE_BYTES) {
-      return failure(413, "Image must be 8 MB or smaller", "file_too_large");
+
+    const issue = firstImageIssue(platforms.data, format.data, file);
+    if (issue) {
+      return failure(issue.code === "file_too_large" ? 413 : 415, issue.message, issue.code);
     }
 
     const requestId = crypto.randomUUID();
     await client.uploadPhoto({
       profile: profile.data,
       platforms: [...new Set(platforms.data)],
+      format: format.data,
       file,
       fileName: file.name || "photo",
-      caption,
+      caption: format.data === "story" ? "" : caption,
       requestId,
     });
     return c.json({ requestId }, 202);
