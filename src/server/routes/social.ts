@@ -1,7 +1,9 @@
 import { Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
-import { IMAGE_FORMATS, firstImageIssue } from "../lib/postFormats";
+import { VIDEO_CEILING_BYTES } from "../lib/postFormats";
 import { PLATFORMS, UploadPostError, type UploadPostClient } from "../lib/uploadPost";
+import { parseUploadForm } from "./uploadRequest";
 
 type SocialRouterOptions = {
   client: UploadPostClient;
@@ -10,7 +12,6 @@ type SocialRouterOptions = {
 
 const profileName = z.string().regex(/^[A-Za-z0-9_@-]{1,64}$/);
 const platformSchema = z.enum(PLATFORMS);
-const formatSchema = z.enum(IMAGE_FORMATS);
 
 const createProfileBody = z.object({
   username: profileName,
@@ -18,6 +19,8 @@ const createProfileBody = z.object({
 });
 const connectBody = z.object({ profile: profileName });
 const pinPageBody = z.object({ profile: profileName, pageId: z.string().min(1).max(64) });
+
+const UPLOAD_BODY_LIMIT_BYTES = VIDEO_CEILING_BYTES + 30 * 1024 * 1024;
 
 function failure(status: number, message: string, code: string) {
   return Response.json({ error: message, code }, { status });
@@ -76,41 +79,45 @@ export function createSocialRouter({ client, connectReturnUrl }: SocialRouterOpt
     return c.json({ ok: true });
   });
 
-  app.post("/upload", async (c) => {
-    const form = await c.req.formData().catch(() => null);
-    if (!form) return failure(400, "Expected a form upload", "invalid_request");
+  app.post(
+    "/upload",
+    bodyLimit({
+      maxSize: UPLOAD_BODY_LIMIT_BYTES,
+      onError: () => failure(413, "Upload is too large", "file_too_large"),
+    }),
+    async (c) => {
+      const form = await c.req.formData().catch(() => null);
+      if (!form) return failure(400, "Expected a form upload", "invalid_request");
 
-    const profile = profileName.safeParse(form.get("profile"));
-    const platforms = z
-      .array(platformSchema)
-      .min(1)
-      .safeParse(form.getAll("platforms"));
-    const format = formatSchema.safeParse(form.get("format") ?? "feed");
-    const file = form.get("file");
-    const caption = String(form.get("caption") ?? "").slice(0, 2200);
+      const parsed = parseUploadForm(form);
+      if (!parsed.ok) return failure(parsed.status, parsed.message, parsed.code);
+      const upload = parsed.value;
 
-    if (!profile.success) return failure(400, "Invalid profile", "invalid_profile");
-    if (!platforms.success) return failure(400, "Pick at least one platform", "invalid_platforms");
-    if (!format.success) return failure(400, "Unknown post format", "invalid_format");
-    if (!(file instanceof File)) return failure(400, "Choose an image", "missing_file");
-
-    const issue = firstImageIssue(platforms.data, format.data, file);
-    if (issue) {
-      return failure(issue.code === "file_too_large" ? 413 : 415, issue.message, issue.code);
-    }
-
-    const requestId = crypto.randomUUID();
-    await client.uploadPhoto({
-      profile: profile.data,
-      platforms: [...new Set(platforms.data)],
-      format: format.data,
-      file,
-      fileName: file.name || "photo",
-      caption: format.data === "story" ? "" : caption,
-      requestId,
-    });
-    return c.json({ requestId }, 202);
-  });
+      const requestId = crypto.randomUUID();
+      const common = {
+        profile: upload.profile,
+        platforms: upload.platforms,
+        format: upload.format,
+        file: upload.file,
+        fileName: upload.file.name || upload.kind,
+        caption: upload.caption,
+        requestId,
+      };
+      if (upload.kind === "image") {
+        await client.uploadPhoto(common);
+      } else {
+        await client.uploadVideo({
+          ...common,
+          description: upload.description,
+          options: upload.options,
+          cover: upload.cover
+            ? { file: upload.cover, fileName: upload.cover.name || "cover" }
+            : undefined,
+        });
+      }
+      return c.json({ requestId }, 202);
+    },
+  );
 
   app.get("/status/:requestId", async (c) => {
     const requestId = z.string().uuid().safeParse(c.req.param("requestId"));

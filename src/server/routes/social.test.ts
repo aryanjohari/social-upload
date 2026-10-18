@@ -11,6 +11,7 @@ function setup(overrides: Partial<UploadPostClient> = {}) {
     listFacebookPages: vi.fn(),
     pinFacebookPage: vi.fn(),
     uploadPhoto: vi.fn(async () => undefined),
+    uploadVideo: vi.fn(async () => undefined),
     getStatus: vi.fn(),
     ...overrides,
   } as unknown as UploadPostClient;
@@ -27,6 +28,7 @@ function uploadForm(fields: Record<string, string | string[] | File>) {
   return form;
 }
 
+const mp4 = () => new File([new Uint8Array(10)], "clip.mp4", { type: "video/mp4" });
 const png = () => new File([new Uint8Array(10)], "a.png", { type: "image/png" });
 
 describe("social router", () => {
@@ -119,7 +121,101 @@ describe("social router", () => {
       app.request("/upload", { method: "POST", body: uploadForm(fields) });
     expect((await send({ profile: "acme", platforms: ["instagram"], file: webp })).status).toBe(415);
     expect((await send({ profile: "acme", platforms: ["facebook"], file: webp })).status).toBe(202);
+    const unknown = await send({ profile: "acme", platforms: ["facebook"], format: "banner", file: png() });
+    expect(unknown.status).toBe(400);
+    expect(((await unknown.json()) as { code: string }).code).toBe("invalid_format");
+  });
+
+  it("sends a video as a reel with its options and cover, not through the photo path", async () => {
+    const { app, client } = setup();
+    const response = await app.request("/upload", {
+      method: "POST",
+      body: uploadForm({
+        profile: "acme",
+        platforms: ["instagram", "facebook"],
+        caption: "new reel",
+        shareToFeed: "false",
+        aiGenerated: "true",
+        cover: new File(["c"], "cover.jpg", { type: "image/jpeg" }),
+        file: mp4(),
+      }),
+    });
+    expect(response.status).toBe(202);
+    expect(client.uploadPhoto).not.toHaveBeenCalled();
+    expect(client.uploadVideo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        format: "reel",
+        caption: "new reel",
+        options: { shareToFeed: false, aiGenerated: true, videoState: "PUBLISHED" },
+        cover: { file: expect.any(File), fileName: "cover.jpg" },
+      }),
+    );
+  });
+
+  it("keeps the description only for long videos and drops story captions", async () => {
+    const { app, client } = setup();
+    const send = (format: string) =>
+      app.request("/upload", {
+        method: "POST",
+        body: uploadForm({
+          profile: "acme",
+          platforms: ["facebook"],
+          format,
+          caption: "Title",
+          description: "Details",
+          file: mp4(),
+        }),
+      });
+    await send("video");
+    await send("story");
+    expect(client.uploadVideo).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ caption: "Title", description: "Details" }),
+    );
+    expect(client.uploadVideo).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ caption: "", description: "" }),
+    );
+  });
+
+  it("rejects formats a platform or file kind can't do", async () => {
+    const { app, client } = setup();
+    const send = (fields: Record<string, string | string[] | File>) =>
+      app.request("/upload", { method: "POST", body: uploadForm(fields) });
+    const longOnInstagram = await send({ profile: "acme", platforms: ["instagram", "facebook"], format: "video", file: mp4() });
+    expect(longOnInstagram.status).toBe(400);
+    expect(((await longOnInstagram.json()) as { code: string }).code).toBe("unsupported_format");
     expect((await send({ profile: "acme", platforms: ["facebook"], format: "reel", file: png() })).status).toBe(400);
+    expect((await send({ profile: "acme", platforms: ["facebook"], file: new File(["x"], "a.mp3", { type: "audio/mpeg" }) })).status).toBe(415);
+    expect(client.uploadVideo).not.toHaveBeenCalled();
+    expect(client.uploadPhoto).not.toHaveBeenCalled();
+  });
+
+  it("rejects a cover with the wrong type", async () => {
+    const { app, client } = setup();
+    const response = await app.request("/upload", {
+      method: "POST",
+      body: uploadForm({
+        profile: "acme",
+        platforms: ["instagram"],
+        cover: new File(["c"], "cover.png", { type: "image/png" }),
+        file: mp4(),
+      }),
+    });
+    expect(response.status).toBe(415);
+    expect(((await response.json()) as { error: string }).error).toContain("Instagram cover images");
+    expect(client.uploadVideo).not.toHaveBeenCalled();
+  });
+
+  it("rejects an oversized request body before reading it", async () => {
+    const { app, client } = setup();
+    const response = await app.request("/upload", {
+      method: "POST",
+      headers: { "Content-Length": String(400 * 1024 * 1024) },
+      body: uploadForm({ profile: "acme", platforms: ["instagram"], file: mp4() }),
+    });
+    expect(response.status).toBe(413);
+    expect(client.uploadVideo).not.toHaveBeenCalled();
   });
 
   it("rejects wrong types, oversize files and missing platforms", async () => {

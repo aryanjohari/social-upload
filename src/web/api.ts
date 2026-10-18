@@ -1,9 +1,20 @@
-import type { ImageFormat } from "../server/lib/postFormats";
+import type { PostFormat, PostOptions } from "../server/lib/postFormats";
 import type { FacebookPages, Platform, Profile, UploadStatus } from "../server/lib/uploadPost";
 
-export type { FacebookPages, ImageFormat, Platform, Profile, UploadStatus };
+export type { FacebookPages, Platform, PostFormat, PostOptions, Profile, UploadStatus };
 
 export class ApiError extends Error {}
+
+export type UploadInput = {
+  profile: string;
+  platforms: Platform[];
+  format: PostFormat;
+  file: File;
+  caption: string;
+  description: string;
+  options: PostOptions;
+  cover: File | null;
+};
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`/social${path}`, init);
@@ -50,19 +61,18 @@ export const api = {
   pinFacebookPage: (profile: string, pageId: string) =>
     call<{ ok: true }>("/facebook-pages", jsonBody({ profile, pageId })),
 
-  upload: (
-    profile: string,
-    platforms: Platform[],
-    format: ImageFormat,
-    file: File,
-    caption: string,
-  ) => {
+  upload: (input: UploadInput) => {
     const form = new FormData();
-    form.set("profile", profile);
-    form.set("format", format);
-    for (const platform of platforms) form.append("platforms", platform);
-    form.set("file", file);
-    form.set("caption", caption);
+    form.set("profile", input.profile);
+    for (const platform of input.platforms) form.append("platforms", platform);
+    form.set("format", input.format);
+    form.set("file", input.file);
+    form.set("caption", input.caption);
+    form.set("description", input.description);
+    form.set("shareToFeed", String(input.options.shareToFeed));
+    form.set("aiGenerated", String(input.options.aiGenerated));
+    form.set("videoState", input.options.videoState);
+    if (input.cover) form.set("cover", input.cover);
     return call<{ requestId: string }>("/upload", { method: "POST", body: form }).then(
       (data) => data.requestId,
     );

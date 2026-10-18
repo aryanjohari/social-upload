@@ -86,6 +86,64 @@ describe("createUploadPostClient", () => {
     expect(form.has("title")).toBe(false);
   });
 
+  it("uploads a reel to /api/upload with media types, options and an Instagram cover", async () => {
+    const fetchImpl = mockFetch(200, { success: true });
+    const client = createUploadPostClient({ apiKey: "k", fetchImpl });
+    await client.uploadVideo({
+      profile: "acme",
+      platforms: ["instagram", "facebook"],
+      format: "reel",
+      file: new Blob(["v"], { type: "video/mp4" }),
+      fileName: "clip.mp4",
+      caption: "new reel",
+      description: "ignored",
+      options: { shareToFeed: false, aiGenerated: true, videoState: "PUBLISHED" },
+      cover: { file: new Blob(["c"], { type: "image/jpeg" }), fileName: "cover.jpg" },
+      requestId: "req-3",
+    });
+    const { url, init, headers } = lastCall(fetchImpl);
+    const form = init.body as FormData;
+    expect(url).toBe("https://api.upload-post.com/api/upload");
+    expect(form.getAll("video")).toHaveLength(1);
+    expect(form.has("photos[]")).toBe(false);
+    expect(form.get("media_type")).toBe("REELS");
+    expect(form.get("facebook_media_type")).toBe("REELS");
+    expect(form.get("share_to_feed")).toBe("false");
+    expect(form.get("is_ai_generated")).toBe("true");
+    expect(form.get("facebook_is_ai_generated")).toBe("true");
+    expect(form.getAll("cover_image")).toHaveLength(1);
+    expect(form.has("facebook_thumbnail")).toBe(false);
+    expect(form.get("title")).toBe("new reel");
+    expect(form.has("description")).toBe(false);
+    expect(form.get("async_upload")).toBe("true");
+    expect(headers.get("Idempotency-Key")).toBe("req-3");
+  });
+
+  it("uploads a Facebook long video with description, draft state and thumbnail", async () => {
+    const fetchImpl = mockFetch(200, { success: true });
+    const client = createUploadPostClient({ apiKey: "k", fetchImpl });
+    await client.uploadVideo({
+      profile: "acme",
+      platforms: ["facebook"],
+      format: "video",
+      file: new Blob(["v"], { type: "video/mp4" }),
+      fileName: "talk.mp4",
+      caption: "Talk",
+      description: "Full recording",
+      options: { shareToFeed: true, aiGenerated: false, videoState: "DRAFT" },
+      cover: { file: new Blob(["c"], { type: "image/png" }), fileName: "thumb.png" },
+      requestId: "req-4",
+    });
+    const form = lastCall(fetchImpl).init.body as FormData;
+    expect(form.get("facebook_media_type")).toBe("VIDEO");
+    expect(form.has("media_type")).toBe(false);
+    expect(form.get("video_state")).toBe("DRAFT");
+    expect(form.get("description")).toBe("Full recording");
+    expect(form.getAll("facebook_thumbnail")).toHaveLength(1);
+    expect(form.has("cover_image")).toBe(false);
+    expect(form.has("share_to_feed")).toBe(false);
+  });
+
   it("surfaces upstream errors with status and code", async () => {
     const fetchImpl = mockFetch(409, { error: "exists", error_code: "PROFILE_EXISTS" });
     const client = createUploadPostClient({ apiKey: "k", fetchImpl });

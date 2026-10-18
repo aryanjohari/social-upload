@@ -1,5 +1,11 @@
 import { z } from "zod";
-import { imageUpstreamFields, type ImageFormat } from "./postFormats";
+import {
+  coverField,
+  mediaUpstreamFields,
+  optionFields,
+  type PostFormat,
+  type PostOptions,
+} from "./postFormats";
 
 export const PLATFORMS = ["instagram", "facebook"] as const;
 export type Platform = (typeof PLATFORMS)[number];
@@ -87,13 +93,33 @@ export type UploadStatus = {
 export type PhotoUpload = {
   profile: string;
   platforms: Platform[];
-  format: ImageFormat;
+  format: PostFormat;
   file: Blob;
   fileName: string;
   caption: string;
   requestId: string;
   facebookPageId?: string;
 };
+
+export type VideoUpload = PhotoUpload & {
+  description: string;
+  options: PostOptions;
+  cover?: { file: Blob; fileName: string };
+};
+
+function uploadForm(upload: PhotoUpload, kind: "image" | "video"): FormData {
+  const form = new FormData();
+  form.set("user", upload.profile);
+  for (const platform of upload.platforms) form.append("platform[]", platform);
+  for (const [field, value] of Object.entries(mediaUpstreamFields(upload.platforms, kind, upload.format))) {
+    form.set(field, value);
+  }
+  if (upload.caption) form.set("title", upload.caption);
+  if (upload.facebookPageId) form.set("facebook_page_id", upload.facebookPageId);
+  form.set("async_upload", "true");
+  form.set("request_id", upload.requestId);
+  return form;
+}
 
 export class UploadPostError extends Error {
   constructor(
@@ -168,6 +194,14 @@ export function createUploadPostClient({ apiKey, baseUrl, fetchImpl }: ClientOpt
     return parsed.data;
   }
 
+  async function submitUpload(path: string, form: FormData, requestId: string): Promise<void> {
+    await request(path, z.object({}).passthrough(), {
+      method: "POST",
+      headers: { "Idempotency-Key": requestId },
+      body: form,
+    });
+  }
+
   function json(body: unknown): RequestInit {
     return {
       method: "POST",
@@ -232,22 +266,31 @@ export function createUploadPostClient({ apiKey, baseUrl, fetchImpl }: ClientOpt
     },
 
     async uploadPhoto(upload: PhotoUpload): Promise<void> {
-      const form = new FormData();
-      form.set("user", upload.profile);
-      for (const platform of upload.platforms) form.append("platform[]", platform);
+      const form = uploadForm(upload, "image");
       form.append("photos[]", upload.file, upload.fileName);
-      for (const [field, value] of Object.entries(imageUpstreamFields(upload.platforms, upload.format))) {
+      await submitUpload("/api/upload_photos", form, upload.requestId);
+    },
+
+    async uploadVideo(upload: VideoUpload): Promise<void> {
+      const form = uploadForm(upload, "video");
+      form.append("video", upload.file, upload.fileName);
+      for (const [field, value] of Object.entries(
+        optionFields(upload.platforms, upload.format, upload.options),
+      )) {
         form.set(field, value);
       }
-      if (upload.caption) form.set("title", upload.caption);
-      if (upload.facebookPageId) form.set("facebook_page_id", upload.facebookPageId);
-      form.set("async_upload", "true");
-      form.set("request_id", upload.requestId);
-      await request("/api/upload_photos", z.object({}).passthrough(), {
-        method: "POST",
-        headers: { "Idempotency-Key": upload.requestId },
-        body: form,
-      });
+      if (upload.format === "video" && upload.description) {
+        form.set("description", upload.description);
+      }
+      if (upload.cover) {
+        const fields = new Set(
+          upload.platforms.map((platform) => coverField(platform, upload.format)),
+        );
+        for (const field of fields) {
+          if (field) form.append(field, upload.cover.file, upload.cover.fileName);
+        }
+      }
+      await submitUpload("/api/upload", form, upload.requestId);
     },
 
     async getStatus(requestId: string): Promise<UploadStatus> {
