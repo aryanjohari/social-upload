@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import {
   ACCEPTED_MEDIA_TYPES,
   DEFAULT_FORMAT,
@@ -8,19 +8,15 @@ import {
   mediaKind,
   supportsFormat,
   videoMetaWarnings,
-  type MediaKind,
   type VideoMeta,
 } from "../server/lib/postFormats";
-import { api, type Platform, type PostFormat, type Profile, type UploadStatus } from "./api";
+import { api, type Platform, type PostFormat, type Profile } from "./api";
 import { FormatPicker } from "./FormatPicker";
 import { FORMAT_LABELS, PLATFORM_LABELS } from "./labels";
 import { MediaPreview } from "./MediaPreview";
 import { EMPTY_DRAFT, PostFields, type PostDraft } from "./PostFields";
-
-const POLLING: Record<MediaKind, { everyMs: number; maxPolls: number }> = {
-  image: { everyMs: 5000, maxPolls: 60 },
-  video: { everyMs: 10000, maxPolls: 60 },
-};
+import { StatusList } from "./StatusList";
+import { usePostStatus } from "./usePostStatus";
 
 type Props = {
   profile: Profile;
@@ -40,20 +36,11 @@ export function UploadPanel({ profile, onError }: Props) {
   const [draft, setDraft] = useState<PostDraft>(EMPTY_DRAFT);
   const [format, setFormat] = useState<PostFormat>("feed");
   const [selected, setSelected] = useState<Platform[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState<UploadStatus | null>(null);
-  const timer = useRef<number | null>(null);
+  const { status, busy, begin, track, fail, clear } = usePostStatus(onError);
 
   useEffect(() => {
     setSelected((current) => current.filter((platform) => available.includes(platform)));
   }, [available.join(",")]);
-
-  useEffect(
-    () => () => {
-      if (timer.current) window.clearTimeout(timer.current);
-    },
-    [],
-  );
 
   const kind = file ? mediaKind(file.type) : "image";
   const formats = FORMATS_BY_KIND[kind ?? "image"];
@@ -61,7 +48,7 @@ export function UploadPanel({ profile, onError }: Props) {
   const sendTo = selected.filter((platform) => supportsFormat(platform, kind ?? "image", activeFormat));
 
   function pick(next: File | null) {
-    setStatus(null);
+    clear();
     setMeta(null);
     setDraft((current) => ({ ...current, cover: null }));
     setFile(next);
@@ -75,29 +62,10 @@ export function UploadPanel({ profile, onError }: Props) {
     );
   }
 
-  function poll(requestId: string, uploadKind: MediaKind, attempt: number) {
-    const { everyMs, maxPolls } = POLLING[uploadKind];
-    timer.current = window.setTimeout(async () => {
-      try {
-        const next = await api.status(requestId);
-        setStatus(next);
-        if (next.done || attempt >= maxPolls) {
-          setBusy(false);
-          return;
-        }
-        poll(requestId, uploadKind, attempt + 1);
-      } catch (error) {
-        setBusy(false);
-        onError(error instanceof Error ? error.message : "Couldn't check the post");
-      }
-    }, everyMs);
-  }
-
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (!file || !kind || sendTo.length === 0) return;
-    setBusy(true);
-    setStatus({ status: "queued", done: false, completed: 0, total: sendTo.length, message: null, results: [] });
+    begin(sendTo.length);
     try {
       const requestId = await api.upload({
         profile: profile.username,
@@ -106,10 +74,9 @@ export function UploadPanel({ profile, onError }: Props) {
         file,
         ...draft,
       });
-      poll(requestId, kind, 1);
+      track(requestId, kind);
     } catch (error) {
-      setBusy(false);
-      setStatus(null);
+      fail();
       onError(error instanceof Error ? error.message : "Upload failed");
     }
   }
@@ -188,38 +155,5 @@ export function UploadPanel({ profile, onError }: Props) {
       </form>
       {status && <StatusList status={status} />}
     </section>
-  );
-}
-
-function StatusList({ status }: { status: UploadStatus }) {
-  const finished = status.done;
-  return (
-    <div className="status" role="status">
-      <strong>
-        {finished
-          ? status.status === "completed"
-            ? "Posted"
-            : "Something failed"
-          : "Posting…"}
-      </strong>
-      {status.message && <p className="muted">{status.message}</p>}
-      <ul>
-        {status.results.map((result) => (
-          <li key={result.platform}>
-            {PLATFORM_LABELS[result.platform as Platform] ?? result.platform}:{" "}
-            {result.ok === false ? "failed" : result.ok ? "done" : "in progress"}
-            {result.message ? ` (${result.message})` : ""}
-            {result.postUrl && result.postUrl.startsWith("http") && (
-              <>
-                {" "}
-                <a href={result.postUrl} target="_blank" rel="noreferrer">
-                  View
-                </a>
-              </>
-            )}
-          </li>
-        ))}
-      </ul>
-    </div>
   );
 }
