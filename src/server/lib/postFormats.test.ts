@@ -7,6 +7,7 @@ import {
   mediaIssue,
   mediaUpstreamFields,
   optionFields,
+  resolvePostTarget,
   videoMetaWarnings,
 } from "./postFormats";
 
@@ -139,5 +140,36 @@ describe("videoMetaWarnings", () => {
     expect(videoMetaWarnings(["facebook"], "story", { ...portrait, duration: 61 })).toEqual([
       "Facebook Stories can be at most 60 seconds",
     ]);
+  });
+});
+
+describe("resolvePostTarget", () => {
+  const both = ["instagram", "facebook"] as const;
+
+  it("assumes an image with no file and keeps a valid requested format", () => {
+    expect(resolvePostTarget(null, "story", both)).toMatchObject({
+      kind: "image",
+      format: "story",
+      fileSupported: true,
+      platforms: ["instagram", "facebook"],
+    });
+  });
+
+  it("falls back to the kind's default when the requested format doesn't fit the file", () => {
+    expect(resolvePostTarget("video/mp4", "feed", both).format).toBe("reel");
+    expect(resolvePostTarget("image/png", "video", both).format).toBe("feed");
+  });
+
+  it("drops platforms that can't do the resulting format", () => {
+    const target = resolvePostTarget("video/mp4", "video", both);
+    expect(target.format).toBe("video");
+    expect(target.platforms).toEqual(["facebook"]);
+  });
+
+  it("flags an unsupported file and treats it as an image", () => {
+    expect(resolvePostTarget("audio/mpeg", "feed", both)).toMatchObject({
+      kind: "image",
+      fileSupported: false,
+    });
   });
 });

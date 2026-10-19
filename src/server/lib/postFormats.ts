@@ -103,6 +103,35 @@ export function supportsFormat(platform: Platform, kind: MediaKind, format: Post
   return MEDIA_RULES[platform][kind].maxBytes[format] !== undefined;
 }
 
+export type PostTarget = {
+  kind: MediaKind;
+  fileSupported: boolean;
+  formats: readonly PostFormat[];
+  format: PostFormat;
+  platforms: Platform[];
+};
+
+// What the post form can actually send: with no file it assumes an image, an unsupported file
+// is flagged, a requested format the file kind can't do falls back to that kind's default, and
+// platforms that can't do the resulting format are dropped.
+export function resolvePostTarget(
+  fileType: string | null,
+  requested: PostFormat,
+  selected: readonly Platform[],
+): PostTarget {
+  const detected = fileType === null ? "image" : mediaKind(fileType);
+  const kind = detected ?? "image";
+  const formats = FORMATS_BY_KIND[kind];
+  const format = formats.includes(requested) ? requested : DEFAULT_FORMAT[kind];
+  return {
+    kind,
+    fileSupported: detected !== null,
+    formats,
+    format,
+    platforms: selected.filter((platform) => supportsFormat(platform, kind, format)),
+  };
+}
+
 export type MediaIssue = {
   code: "unsupported_type" | "file_too_large" | "unsupported_format";
   message: string;

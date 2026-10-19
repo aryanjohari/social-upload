@@ -1,11 +1,9 @@
 import { useEffect, useState, type FormEvent } from "react";
 import {
   ACCEPTED_MEDIA_TYPES,
-  DEFAULT_FORMAT,
-  FORMATS_BY_KIND,
   coverIssue,
   firstMediaIssue,
-  mediaKind,
+  resolvePostTarget,
   supportsFormat,
   videoMetaWarnings,
   type VideoMeta,
@@ -42,10 +40,10 @@ export function UploadPanel({ profile, onError }: Props) {
     setSelected((current) => current.filter((platform) => available.includes(platform)));
   }, [available.join(",")]);
 
-  const kind = file ? mediaKind(file.type) : "image";
-  const formats = FORMATS_BY_KIND[kind ?? "image"];
-  const activeFormat = formats.includes(format) ? format : DEFAULT_FORMAT[kind ?? "image"];
-  const sendTo = selected.filter((platform) => supportsFormat(platform, kind ?? "image", activeFormat));
+  const target = resolvePostTarget(file?.type ?? null, format, selected);
+  const { kind, formats, fileSupported } = target;
+  const activeFormat = target.format;
+  const sendTo = target.platforms;
 
   function pick(next: File | null) {
     clear();
@@ -64,7 +62,7 @@ export function UploadPanel({ profile, onError }: Props) {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!file || !kind || sendTo.length === 0) return;
+    if (!file || !fileSupported || sendTo.length === 0) return;
     begin(sendTo.length);
     try {
       const requestId = await api.upload({
@@ -83,7 +81,7 @@ export function UploadPanel({ profile, onError }: Props) {
 
   const issue = !file
     ? null
-    : !kind
+    : !fileSupported
       ? { message: "Choose an image or video" }
       : (firstMediaIssue(sendTo, activeFormat, file) ??
         (draft.cover ? coverIssue(sendTo, activeFormat, draft.cover) : null));
@@ -115,7 +113,7 @@ export function UploadPanel({ profile, onError }: Props) {
         <fieldset className="platforms">
           <legend>Post to</legend>
           {available.map((platform) => {
-            const supported = supportsFormat(platform, kind ?? "image", activeFormat);
+            const supported = supportsFormat(platform, kind, activeFormat);
             return (
               <label key={platform} className="check">
                 <input
@@ -148,7 +146,7 @@ export function UploadPanel({ profile, onError }: Props) {
         <button
           type="submit"
           className="primary"
-          disabled={busy || !file || !kind || sendTo.length === 0 || issue !== null}
+          disabled={busy || !file || !fileSupported || sendTo.length === 0 || issue !== null}
         >
           {busy ? "Posting…" : "Post"}
         </button>
