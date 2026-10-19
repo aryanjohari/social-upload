@@ -154,6 +154,29 @@ describe("createUploadPostClient", () => {
     });
   });
 
+  it("shows Upload-Post's message when a daily cap is hit", async () => {
+    const fetchImpl = mockFetch(429, {
+      success: false,
+      message: "Daily cap reached for instagram: 50/50 in last 24h",
+      violations: [{ platform: "instagram", type: "hard_cap", used_last_24h: 50, cap: 50 }],
+    });
+    const client = createUploadPostClient({ apiKey: "k", fetchImpl });
+    await expect(
+      client.uploadPhoto({
+        profile: "acme",
+        platforms: ["instagram"],
+        format: "feed",
+        file: new Blob(["x"], { type: "image/png" }),
+        fileName: "a.png",
+        caption: "",
+        requestId: "req-5",
+      }),
+    ).rejects.toMatchObject({
+      status: 429,
+      message: "Daily cap reached for instagram: 50/50 in last 24h",
+    });
+  });
+
   it("rejects malformed upstream responses", async () => {
     const fetchImpl = mockFetch(200, { nope: true });
     const client = createUploadPostClient({ apiKey: "k", fetchImpl });

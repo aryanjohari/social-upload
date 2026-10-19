@@ -170,7 +170,11 @@ describe("social router", () => {
     await send("story");
     expect(client.uploadVideo).toHaveBeenNthCalledWith(
       1,
-      expect.objectContaining({ caption: "Title", description: "Details" }),
+      expect.objectContaining({
+        caption: "Title",
+        description: "Details",
+        options: { shareToFeed: true, aiGenerated: false, videoState: "PUBLISHED" },
+      }),
     );
     expect(client.uploadVideo).toHaveBeenNthCalledWith(
       2,
@@ -189,6 +193,18 @@ describe("social router", () => {
     expect((await send({ profile: "acme", platforms: ["facebook"], file: new File(["x"], "a.mp3", { type: "audio/mpeg" }) })).status).toBe(415);
     expect(client.uploadVideo).not.toHaveBeenCalled();
     expect(client.uploadPhoto).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["a missing file", { profile: "acme", platforms: ["instagram"] }, "missing_file"],
+    ["an invalid profile", { profile: "bad name!", platforms: ["instagram"], file: mp4() }, "invalid_profile"],
+    ["an unknown video state", { profile: "acme", platforms: ["instagram"], videoState: "SCHEDULED", file: mp4() }, "invalid_video_state"],
+  ])("rejects %s", async (_label, fields, code) => {
+    const { app, client } = setup();
+    const response = await app.request("/upload", { method: "POST", body: uploadForm(fields) });
+    expect(response.status).toBe(400);
+    expect(((await response.json()) as { code: string }).code).toBe(code);
+    expect(client.uploadVideo).not.toHaveBeenCalled();
   });
 
   it("rejects a cover with the wrong type", async () => {
