@@ -70,3 +70,7 @@ export function validateLocalPost(input: LocalPostInput): LocalPostIssue | null 
   }
   return null;
 }
+
+export const REVIEW_ORDERS = ["updateTime desc", "rating desc"] as const;
+export type ReviewOrder = (typeof REVIEW_ORDERS)[number];
+export const MAX_REVIEW_PAGE_SIZE = 50;

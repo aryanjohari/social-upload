@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type GoogleBusinessLocations, type Profile } from "./api";
 import { GoogleBusinessPostForm } from "./GoogleBusinessPostForm";
+import { GoogleBusinessReviewList } from "./GoogleBusinessReviewList";
 
 type Props = {
   profile: Profile;
@@ -53,6 +54,7 @@ export function GoogleBusinessPanel({ profile, onError }: Props) {
         </label>
       )}
       <GoogleBusinessPostForm profile={profile.username} onError={onError} />
+      <GoogleBusinessReviewList profile={profile.username} onError={onError} />
     </section>
   );
 }
