@@ -6,6 +6,7 @@ import {
   type PostFormat,
   type PostOptions,
 } from "./postFormats";
+import { googleBusinessMethods } from "./googleBusiness";
 
 export const PLATFORMS = ["instagram", "facebook"] as const;
 export type Platform = (typeof PLATFORMS)[number];
@@ -67,7 +68,11 @@ export type Profile = {
   username: string;
   displayName: string | null;
   accounts: Partial<Record<Platform, ConnectedAccount>>;
+  // Kept apart from accounts: the post form posts to every key of accounts, and Google Business has its own flow.
+  googleBusiness?: ConnectedAccount;
 };
+
+const GOOGLE_BUSINESS_ACCOUNT_KEY = "google_business";
 
 export type FacebookPages = {
   pages: { id: string; name: string; picture: string | null }[];
@@ -152,7 +157,15 @@ function toProfile(raw: z.infer<typeof profileSchema>): Profile {
     const entry = raw.social_accounts[platform];
     if (entry && typeof entry === "object") accounts[platform] = toAccount(entry);
   }
-  return { username: raw.username, displayName: raw.display_name ?? null, accounts };
+  const googleBusiness = raw.social_accounts[GOOGLE_BUSINESS_ACCOUNT_KEY];
+  return {
+    username: raw.username,
+    displayName: raw.display_name ?? null,
+    accounts,
+    ...(googleBusiness && typeof googleBusiness === "object"
+      ? { googleBusiness: toAccount(googleBusiness) }
+      : {}),
+  };
 }
 
 const FINISHED = new Set(["completed", "failed", "not_found"]);
@@ -211,6 +224,8 @@ export function createUploadPostClient({ apiKey, baseUrl, fetchImpl }: ClientOpt
   }
 
   return {
+    ...googleBusinessMethods(request, json),
+
     async listProfiles(): Promise<Profile[]> {
       const data = await request("/api/uploadposts/users", profilesResponseSchema);
       return data.profiles.map(toProfile);

@@ -3,6 +3,8 @@ import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import { VIDEO_CEILING_BYTES } from "../lib/postFormats";
 import { PLATFORMS, UploadPostError, type UploadPostClient } from "../lib/uploadPost";
+import { createGoogleBusinessRouter } from "./googleBusiness";
+import { failure, profileName } from "./http";
 import { parseUploadForm } from "./uploadRequest";
 
 type SocialRouterOptions = {
@@ -10,7 +12,6 @@ type SocialRouterOptions = {
   connectReturnUrl: string;
 };
 
-const profileName = z.string().regex(/^[A-Za-z0-9_@-]{1,64}$/);
 const platformSchema = z.enum(PLATFORMS);
 
 const createProfileBody = z.object({
@@ -22,10 +23,6 @@ const pinPageBody = z.object({ profile: profileName, pageId: z.string().min(1).m
 
 const UPLOAD_BODY_LIMIT_BYTES = VIDEO_CEILING_BYTES + 30 * 1024 * 1024;
 
-function failure(status: number, message: string, code: string) {
-  return Response.json({ error: message, code }, { status });
-}
-
 export function createSocialRouter({ client, connectReturnUrl }: SocialRouterOptions) {
   const app = new Hono();
 
@@ -36,6 +33,8 @@ export function createSocialRouter({ client, connectReturnUrl }: SocialRouterOpt
     }
     return failure(500, "Something went wrong", "internal_error");
   });
+
+  app.route("/google-business", createGoogleBusinessRouter({ client, connectReturnUrl }));
 
   app.get("/profiles", async (c) => c.json({ profiles: await client.listProfiles() }));
 

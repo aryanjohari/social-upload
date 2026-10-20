@@ -50,3 +50,9 @@ Each step is its own PR with tests. Run `pnpm typecheck` and `pnpm test` before 
 ## Later, in 9horsemen
 
 A reviews add-on with its own `ADD_ON_DATA` key, a daily sync in `runScheduledJobs`, and an owner-curated website widget. Only after the Google policy and personal-data questions are answered. Not started.
+
+## Assumptions to verify in step 5
+
+Guessed from docs while building; check each against the real account.
+
+- Step 1: the connected account appears in `social_accounts` under `google_business`, and the connect return URL reports `platform=google-business` (or `google_business`).
