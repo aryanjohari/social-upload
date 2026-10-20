@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type Profile } from "./api";
 import { ConnectPanel } from "./ConnectPanel";
+import { GoogleBusinessPanel } from "./GoogleBusinessPanel";
 import { ProfileBar } from "./ProfileBar";
 import { UploadPanel } from "./UploadPanel";
 import { useConnectReturn } from "./useConnectReturn";
@@ -92,6 +93,7 @@ export function App() {
           {profile && (
             <>
               <ConnectPanel profile={profile} onError={reportError} />
+              <GoogleBusinessPanel profile={profile} onError={reportError} />
               <UploadPanel profile={profile} onError={reportError} />
             </>
           )}

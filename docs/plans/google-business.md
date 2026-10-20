@@ -56,3 +56,4 @@ A reviews add-on with its own `ADD_ON_DATA` key, a daily sync in `runScheduledJo
 Guessed from docs while building; check each against the real account.
 
 - Step 1: the connected account appears in `social_accounts` under `google_business`, and the connect return URL reports `platform=google-business` (or `google_business`).
+- Step 2: the pin endpoint lists every location for the profile, `name` is a usable `gbp_location_id`, and a single-location account needs no pin. `DELETE` to clear a pin exists upstream but is not built.

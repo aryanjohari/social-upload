@@ -1,4 +1,5 @@
 import type { PostFormat, PostOptions } from "../server/lib/postFormats";
+import type { GoogleBusinessLocations } from "../server/lib/googleBusiness";
 import type {
   ConnectedAccount,
   FacebookPages,
@@ -10,6 +11,7 @@ import type {
 export type {
   ConnectedAccount,
   FacebookPages,
+  GoogleBusinessLocations,
   Platform,
   PostFormat,
   PostOptions,
@@ -73,6 +75,12 @@ export const api = {
     call<{ authorizeUrl: string }>("/google-business/connect", jsonBody({ profile })).then(
       (data) => data.authorizeUrl,
     ),
+
+  googleBusinessLocations: (profile: string) =>
+    call<GoogleBusinessLocations>(`/google-business/locations?profile=${encodeURIComponent(profile)}`),
+
+  pinGoogleBusinessLocation: (profile: string, locationId: string) =>
+    call<{ ok: true }>("/google-business/locations", jsonBody({ profile, locationId })),
 
   facebookPages: (profile: string) =>
     call<FacebookPages>(`/facebook-pages?profile=${encodeURIComponent(profile)}`),
