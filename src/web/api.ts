@@ -1,5 +1,6 @@
 import type { PostFormat, PostOptions } from "../server/lib/postFormats";
 import type { GoogleBusinessLocations } from "../server/lib/googleBusiness";
+import type { CtaType } from "../server/lib/googleBusinessRules";
 import type {
   ConnectedAccount,
   FacebookPages,
@@ -30,6 +31,14 @@ export type UploadInput = {
   description: string;
   options: PostOptions;
   cover: File | null;
+};
+
+export type GoogleBusinessPostInput = {
+  profile: string;
+  summary: string;
+  ctaType: CtaType | null;
+  ctaUrl: string;
+  file: File;
 };
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
@@ -75,6 +84,18 @@ export const api = {
     call<{ authorizeUrl: string }>("/google-business/connect", jsonBody({ profile })).then(
       (data) => data.authorizeUrl,
     ),
+
+  postToGoogleBusiness: (input: GoogleBusinessPostInput) => {
+    const form = new FormData();
+    form.set("profile", input.profile);
+    form.set("summary", input.summary);
+    form.set("ctaType", input.ctaType ?? "");
+    form.set("ctaUrl", input.ctaUrl);
+    form.set("file", input.file);
+    return call<{ requestId: string }>("/google-business/post", { method: "POST", body: form }).then(
+      (data) => data.requestId,
+    );
+  },
 
   googleBusinessLocations: (profile: string) =>
     call<GoogleBusinessLocations>(`/google-business/locations?profile=${encodeURIComponent(profile)}`),

@@ -142,6 +142,58 @@ describe("social router", () => {
     expect(response.status).toBe(400);
   });
 
+  it("accepts a Google Business post and returns a request id", async () => {
+    const { app, client } = setup({ uploadGoogleBusinessPost: vi.fn(async () => undefined) });
+    const response = await app.request("/google-business/post", {
+      method: "POST",
+      body: uploadForm({
+        profile: "acme",
+        summary: "Now open late",
+        ctaType: "BOOK",
+        ctaUrl: "https://acme.test/book",
+        file: new File([new Uint8Array(10)], "shop.jpg", { type: "image/jpeg" }),
+      }),
+    });
+    expect(response.status).toBe(202);
+    const body = (await response.json()) as { requestId: string };
+    expect(body.requestId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(client.uploadGoogleBusinessPost).toHaveBeenCalledWith(
+      expect.objectContaining({
+        profile: "acme",
+        summary: "Now open late",
+        ctaType: "BOOK",
+        ctaUrl: "https://acme.test/book",
+        fileName: "shop.jpg",
+      }),
+    );
+  });
+
+  it("rejects invalid Google Business posts before calling upstream", async () => {
+    const { app, client } = setup({ uploadGoogleBusinessPost: vi.fn() });
+    const post = (fields: Record<string, string | File>) =>
+      app.request("/google-business/post", { method: "POST", body: uploadForm(fields) });
+    const jpg = new File([new Uint8Array(10)], "a.jpg", { type: "image/jpeg" });
+
+    const tooLong = await post({ profile: "acme", summary: "a".repeat(1501), file: jpg });
+    const noPhoto = await post({ profile: "acme", summary: "hi" });
+    const webp = await post({
+      profile: "acme",
+      summary: "hi",
+      file: new File([new Uint8Array(10)], "a.webp", { type: "image/webp" }),
+    });
+    const noUrl = await post({ profile: "acme", summary: "hi", ctaType: "SHOP", file: jpg });
+    const badType = await post({ profile: "acme", summary: "hi", ctaType: "NOPE", file: jpg });
+    const badProfile = await post({ profile: "bad name!", summary: "hi", file: jpg });
+
+    expect(tooLong.status).toBe(400);
+    expect(noPhoto.status).toBe(400);
+    expect(webp.status).toBe(415);
+    expect(noUrl.status).toBe(400);
+    expect(badType.status).toBe(400);
+    expect(badProfile.status).toBe(400);
+    expect(client.uploadGoogleBusinessPost).not.toHaveBeenCalled();
+  });
+
   it("accepts a valid upload and returns a request id", async () => {
     const { app, client } = setup();
     const response = await app.request("/upload", {

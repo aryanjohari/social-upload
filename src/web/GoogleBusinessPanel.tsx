@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type GoogleBusinessLocations, type Profile } from "./api";
+import { GoogleBusinessPostForm } from "./GoogleBusinessPostForm";
 
 type Props = {
   profile: Profile;
@@ -30,23 +31,28 @@ export function GoogleBusinessPanel({ profile, onError }: Props) {
     }
   }
 
+  if (!usable) return null;
+
   // A single location is auto-detected upstream, so there is nothing to choose.
-  if (!locations || locations.locations.length < 2) return null;
+  const choices = locations && locations.locations.length > 1 ? locations : null;
 
   return (
     <section className="card">
       <h2>Google Business</h2>
-      <label className="field">
-        <span>Location to post to</span>
-        <select value={locations.selectedLocationId ?? ""} onChange={(event) => pin(event.target.value)}>
-          {!locations.selectedLocationId && <option value="">Choose a location…</option>}
-          {locations.locations.map((location) => (
-            <option key={location.id} value={location.id}>
-              {location.name}
-            </option>
-          ))}
-        </select>
-      </label>
+      {choices && (
+        <label className="field">
+          <span>Location to post to</span>
+          <select value={choices.selectedLocationId ?? ""} onChange={(event) => pin(event.target.value)}>
+            {!choices.selectedLocationId && <option value="">Choose a location…</option>}
+            {choices.locations.map((location) => (
+              <option key={location.id} value={location.id}>
+                {location.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      <GoogleBusinessPostForm profile={profile.username} onError={onError} />
     </section>
   );
 }

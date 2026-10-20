@@ -165,6 +165,67 @@ describe("createUploadPostClient", () => {
     });
   });
 
+  it("posts a Google Business photo update with a button", async () => {
+    const fetchImpl = mockFetch(200, { success: true });
+    const client = createUploadPostClient({ apiKey: "k", fetchImpl });
+    await client.uploadGoogleBusinessPost({
+      profile: "acme",
+      file: new Blob(["x"], { type: "image/jpeg" }),
+      fileName: "shop.jpg",
+      summary: "Now open late",
+      ctaType: "BOOK",
+      ctaUrl: "https://acme.test/book",
+      requestId: "req-gbp",
+    });
+    const { url, init, headers } = lastCall(fetchImpl);
+    const form = init.body as FormData;
+    expect(url).toBe("https://api.upload-post.com/api/upload_photos");
+    expect(form.getAll("platform[]")).toEqual(["google_business"]);
+    expect(form.get("user")).toBe("acme");
+    expect(form.get("title")).toBe("Now open late");
+    expect(form.get("gbp_topic_type")).toBe("STANDARD");
+    expect(form.get("gbp_cta_type")).toBe("BOOK");
+    expect(form.get("gbp_cta_url")).toBe("https://acme.test/book");
+    expect(form.getAll("photos[]")).toHaveLength(1);
+    expect(form.get("async_upload")).toBe("true");
+    expect(form.get("request_id")).toBe("req-gbp");
+    expect(form.has("gbp_location_id")).toBe(false);
+    expect(headers.get("Idempotency-Key")).toBe("req-gbp");
+  });
+
+  it("omits the button fields when a Google Business post has no button or url", async () => {
+    const fetchImpl = mockFetch(200, { success: true });
+    const client = createUploadPostClient({ apiKey: "k", fetchImpl });
+    await client.uploadGoogleBusinessPost({
+      profile: "acme",
+      file: new Blob(["x"], { type: "image/png" }),
+      fileName: "a.png",
+      summary: "Call us",
+      ctaType: "CALL",
+      ctaUrl: "",
+      requestId: "req-gbp-2",
+    });
+    const form = lastCall(fetchImpl).init.body as FormData;
+    expect(form.get("gbp_cta_type")).toBe("CALL");
+    expect(form.has("gbp_cta_url")).toBe(false);
+  });
+
+  it("surfaces an upstream error when a Google Business post is rejected", async () => {
+    const fetchImpl = mockFetch(400, { error: "Multiple locations: choose one" });
+    const client = createUploadPostClient({ apiKey: "k", fetchImpl });
+    await expect(
+      client.uploadGoogleBusinessPost({
+        profile: "acme",
+        file: new Blob(["x"], { type: "image/png" }),
+        fileName: "a.png",
+        summary: "hi",
+        ctaType: null,
+        ctaUrl: "",
+        requestId: "req-gbp-3",
+      }),
+    ).rejects.toMatchObject({ status: 400, message: "Multiple locations: choose one" });
+  });
+
   it("uploads photos as an async multipart request with an idempotency key", async () => {
     const fetchImpl = mockFetch(200, { success: true });
     const client = createUploadPostClient({ apiKey: "k", fetchImpl });

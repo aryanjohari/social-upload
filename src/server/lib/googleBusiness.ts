@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { CtaType } from "./googleBusinessRules";
 
 const startResponseSchema = z.object({ authorize_url: z.string().url() });
 
@@ -19,9 +20,28 @@ type Request = <T>(
 ) => Promise<T>;
 
 type JsonInit = (body: unknown) => RequestInit;
+type SubmitUpload = (path: string, form: FormData, requestId: string) => Promise<void>;
 
-// Takes the shared request helpers from createUploadPostClient so this file does not import it back.
-export function googleBusinessMethods(request: Request, json: JsonInit) {
+export type GoogleBusinessPost = {
+  profile: string;
+  file: Blob;
+  fileName: string;
+  summary: string;
+  ctaType: CtaType | null;
+  ctaUrl: string;
+  requestId: string;
+};
+
+// Takes the shared helpers from createUploadPostClient so this file does not import it back.
+export function googleBusinessMethods({
+  request,
+  json,
+  submitUpload,
+}: {
+  request: Request;
+  json: JsonInit;
+  submitUpload: SubmitUpload;
+}) {
   return {
     async startGoogleBusinessConnect(profile: string, redirectUrl: string): Promise<string> {
       const data = await request(
@@ -49,6 +69,21 @@ export function googleBusinessMethods(request: Request, json: JsonInit) {
         z.object({ success: z.boolean() }),
         json({ profile_username: profile, gbp_location_id: locationId }),
       );
+    },
+
+    // No location id is sent: the pinned location (or the only one) is used upstream.
+    async uploadGoogleBusinessPost(post: GoogleBusinessPost): Promise<void> {
+      const form = new FormData();
+      form.set("user", post.profile);
+      form.append("platform[]", "google_business");
+      form.set("title", post.summary);
+      form.set("gbp_topic_type", "STANDARD");
+      if (post.ctaType) form.set("gbp_cta_type", post.ctaType);
+      if (post.ctaUrl) form.set("gbp_cta_url", post.ctaUrl);
+      form.set("async_upload", "true");
+      form.set("request_id", post.requestId);
+      form.append("photos[]", post.file, post.fileName);
+      await submitUpload("/api/upload_photos", form, post.requestId);
     },
   };
 }
