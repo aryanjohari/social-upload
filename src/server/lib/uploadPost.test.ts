@@ -42,6 +42,49 @@ describe("createUploadPostClient", () => {
     expect(JSON.parse(String(init.body))).toEqual({ profile: "acme", redirect_url: "https://app.test/" });
   });
 
+  it("starts Google Business oauth through its own endpoint", async () => {
+    const fetchImpl = mockFetch(200, { success: true, authorize_url: "https://accounts.google.com/o/oauth2/v2/auth?x=1" });
+    const client = createUploadPostClient({ apiKey: "k", fetchImpl });
+    const url = await client.startGoogleBusinessConnect("acme", "https://app.test/");
+    const { url: called, init } = lastCall(fetchImpl);
+    expect(url).toContain("accounts.google.com");
+    expect(called).toBe("https://api.upload-post.com/api/uploadposts/oauth/google-business/start");
+    expect(JSON.parse(String(init.body))).toEqual({ profile: "acme", redirect_url: "https://app.test/" });
+  });
+
+  it("surfaces an upstream error when Google Business oauth cannot start", async () => {
+    const fetchImpl = mockFetch(403, { error: "not allowed", error_code: "PLAN_LIMIT" });
+    const client = createUploadPostClient({ apiKey: "k", fetchImpl });
+    await expect(client.startGoogleBusinessConnect("acme", "https://app.test/")).rejects.toMatchObject({
+      status: 403,
+      code: "PLAN_LIMIT",
+    });
+  });
+
+  it("keeps a connected Google Business account off the Instagram/Facebook accounts", async () => {
+    const fetchImpl = mockFetch(200, {
+      profile: {
+        username: "acme",
+        social_accounts: {
+          google_business: { display_name: "Acme Cafe", reauth_required: true },
+          instagram: "",
+        },
+      },
+    });
+    const client = createUploadPostClient({ apiKey: "k", fetchImpl });
+    const profile = await client.getProfile("acme");
+    expect(profile.googleBusiness).toMatchObject({ displayName: "Acme Cafe", reauthRequired: true });
+    expect(Object.keys(profile.accounts)).toEqual([]);
+  });
+
+  it("leaves googleBusiness unset when only a placeholder is returned", async () => {
+    const fetchImpl = mockFetch(200, {
+      profile: { username: "acme", social_accounts: { google_business: "" } },
+    });
+    const client = createUploadPostClient({ apiKey: "k", fetchImpl });
+    expect((await client.getProfile("acme")).googleBusiness).toBeUndefined();
+  });
+
   it("uploads photos as an async multipart request with an idempotency key", async () => {
     const fetchImpl = mockFetch(200, { success: true });
     const client = createUploadPostClient({ apiKey: "k", fetchImpl });

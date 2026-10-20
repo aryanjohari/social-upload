@@ -59,6 +59,40 @@ describe("social router", () => {
     expect(profile.status).toBe(400);
   });
 
+  it("returns the Google Business authorize url", async () => {
+    const { app, client } = setup({
+      startGoogleBusinessConnect: vi.fn(async () => "https://accounts.google.com/go"),
+    });
+    const response = await app.request("/google-business/connect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profile: "acme" }),
+    });
+    expect(await response.json()).toEqual({ authorizeUrl: "https://accounts.google.com/go" });
+    expect(client.startGoogleBusinessConnect).toHaveBeenCalledWith("acme", "https://app.test/");
+  });
+
+  it("rejects a Google Business connect with a bad profile name or upstream failure", async () => {
+    const { app } = setup({
+      startGoogleBusinessConnect: vi.fn(async () => {
+        throw new UploadPostError("nope", 403, "PLAN_LIMIT");
+      }),
+    });
+    const bad = await app.request("/google-business/connect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profile: "bad name!" }),
+    });
+    const upstream = await app.request("/google-business/connect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profile: "acme" }),
+    });
+    expect(bad.status).toBe(400);
+    expect(upstream.status).toBe(403);
+    expect(await upstream.json()).toEqual({ error: "nope", code: "PLAN_LIMIT" });
+  });
+
   it("accepts a valid upload and returns a request id", async () => {
     const { app, client } = setup();
     const response = await app.request("/upload", {

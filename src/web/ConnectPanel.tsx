@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type FacebookPages, type Platform, type Profile } from "./api";
+import { api, type ConnectedAccount, type FacebookPages, type Platform, type Profile } from "./api";
 import { PLATFORM_LABELS } from "./labels";
 
 type Props = {
@@ -8,9 +8,17 @@ type Props = {
 };
 
 const PLATFORM_ORDER: Platform[] = ["instagram", "facebook"];
+const GOOGLE_BUSINESS = "google-business";
+
+type ConnectRow = {
+  key: string;
+  label: string;
+  account: ConnectedAccount | undefined;
+  start: () => Promise<string>;
+};
 
 export function ConnectPanel({ profile, onError }: Props) {
-  const [starting, setStarting] = useState<Platform | null>(null);
+  const [starting, setStarting] = useState<string | null>(null);
   const [pages, setPages] = useState<FacebookPages | null>(null);
   const facebookConnected = Boolean(profile.accounts.facebook);
 
@@ -25,10 +33,25 @@ export function ConnectPanel({ profile, onError }: Props) {
       .catch((error: Error) => onError(error.message));
   }, [facebookConnected, profile.username, onError]);
 
-  async function connect(platform: Platform) {
-    setStarting(platform);
+  const rows: ConnectRow[] = [
+    ...PLATFORM_ORDER.map((platform) => ({
+      key: platform,
+      label: PLATFORM_LABELS[platform],
+      account: profile.accounts[platform],
+      start: () => api.startConnect(profile.username, platform),
+    })),
+    {
+      key: GOOGLE_BUSINESS,
+      label: "Google Business",
+      account: profile.googleBusiness,
+      start: () => api.startGoogleBusinessConnect(profile.username),
+    },
+  ];
+
+  async function connect(row: ConnectRow) {
+    setStarting(row.key);
     try {
-      window.location.href = await api.startConnect(profile.username, platform);
+      window.location.href = await row.start();
     } catch (error) {
       onError(error instanceof Error ? error.message : "Couldn't start connecting");
       setStarting(null);
@@ -48,12 +71,12 @@ export function ConnectPanel({ profile, onError }: Props) {
     <section className="card">
       <h2>Connected accounts</h2>
       <ul className="accounts">
-        {PLATFORM_ORDER.map((platform) => {
-          const account = profile.accounts[platform];
+        {rows.map((row) => {
+          const { account } = row;
           return (
-            <li key={platform} className="account">
+            <li key={row.key} className="account">
               <div className="account-info">
-                <strong>{PLATFORM_LABELS[platform]}</strong>
+                <strong>{row.label}</strong>
                 <span className="muted">
                   {account
                     ? account.reauthRequired
@@ -66,9 +89,9 @@ export function ConnectPanel({ profile, onError }: Props) {
                 type="button"
                 className={account && !account.reauthRequired ? "ghost" : "primary"}
                 disabled={starting !== null}
-                onClick={() => connect(platform)}
+                onClick={() => connect(row)}
               >
-                {starting === platform ? "Opening…" : account ? "Reconnect" : "Connect"}
+                {starting === row.key ? "Opening…" : account ? "Reconnect" : "Connect"}
               </button>
             </li>
           );

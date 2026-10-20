@@ -1,7 +1,21 @@
 import type { PostFormat, PostOptions } from "../server/lib/postFormats";
-import type { FacebookPages, Platform, Profile, UploadStatus } from "../server/lib/uploadPost";
+import type {
+  ConnectedAccount,
+  FacebookPages,
+  Platform,
+  Profile,
+  UploadStatus,
+} from "../server/lib/uploadPost";
 
-export type { FacebookPages, Platform, PostFormat, PostOptions, Profile, UploadStatus };
+export type {
+  ConnectedAccount,
+  FacebookPages,
+  Platform,
+  PostFormat,
+  PostOptions,
+  Profile,
+  UploadStatus,
+};
 
 export class ApiError extends Error {}
 
@@ -52,6 +66,11 @@ export const api = {
 
   startConnect: (profile: string, platform: Platform) =>
     call<{ authorizeUrl: string }>(`/connect/${platform}`, jsonBody({ profile })).then(
+      (data) => data.authorizeUrl,
+    ),
+
+  startGoogleBusinessConnect: (profile: string) =>
+    call<{ authorizeUrl: string }>("/google-business/connect", jsonBody({ profile })).then(
       (data) => data.authorizeUrl,
     ),
 
