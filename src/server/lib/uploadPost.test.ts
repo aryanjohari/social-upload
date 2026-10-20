@@ -85,6 +85,86 @@ describe("createUploadPostClient", () => {
     expect((await client.getProfile("acme")).googleBusiness).toBeUndefined();
   });
 
+  it("lists Google Business locations with the pinned one", async () => {
+    const fetchImpl = mockFetch(200, {
+      success: true,
+      locations: [
+        { name: "locations/1", title: "Acme Madrid", account_id: "key", account_name: "accounts/9" },
+        { name: "locations/2", title: "Acme Lisbon" },
+      ],
+      selected_location_id: "locations/2",
+      selected_location_name: "Acme Lisbon",
+    });
+    const client = createUploadPostClient({ apiKey: "k", fetchImpl });
+    const result = await client.listGoogleBusinessLocations("acme");
+    expect(lastCall(fetchImpl).url).toBe(
+      "https://api.upload-post.com/api/uploadposts/users/google-business-location?profile_username=acme",
+    );
+    expect(result).toEqual({
+      locations: [
+        { id: "locations/1", name: "Acme Madrid" },
+        { id: "locations/2", name: "Acme Lisbon" },
+      ],
+      selectedLocationId: "locations/2",
+    });
+  });
+
+  it("reports no pinned Google Business location as null", async () => {
+    const fetchImpl = mockFetch(200, {
+      locations: [],
+      selected_location_id: null,
+      selected_location_name: null,
+    });
+    const client = createUploadPostClient({ apiKey: "k", fetchImpl });
+    expect(await client.listGoogleBusinessLocations("acme")).toEqual({
+      locations: [],
+      selectedLocationId: null,
+    });
+  });
+
+  it("surfaces an upstream error when listing Google Business locations", async () => {
+    const fetchImpl = mockFetch(400, { error: "No Google Business connected" });
+    const client = createUploadPostClient({ apiKey: "k", fetchImpl });
+    await expect(client.listGoogleBusinessLocations("acme")).rejects.toMatchObject({
+      status: 400,
+      message: "No Google Business connected",
+    });
+  });
+
+  it("rejects a malformed Google Business locations response", async () => {
+    const fetchImpl = mockFetch(200, { locations: [{ title: "no name" }] });
+    const client = createUploadPostClient({ apiKey: "k", fetchImpl });
+    await expect(client.listGoogleBusinessLocations("acme")).rejects.toMatchObject({
+      status: 502,
+      code: "bad_response",
+    });
+  });
+
+  it("pins a Google Business location by profile and location id", async () => {
+    const fetchImpl = mockFetch(200, {
+      success: true,
+      gbp_location_id: "locations/1",
+      gbp_location_name: "Acme Madrid",
+    });
+    const client = createUploadPostClient({ apiKey: "k", fetchImpl });
+    await client.pinGoogleBusinessLocation("acme", "locations/1");
+    const { url, init } = lastCall(fetchImpl);
+    expect(url).toBe("https://api.upload-post.com/api/uploadposts/users/google-business-location");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({
+      profile_username: "acme",
+      gbp_location_id: "locations/1",
+    });
+  });
+
+  it("surfaces an upstream error when the location is not available to the account", async () => {
+    const fetchImpl = mockFetch(400, { error: "Location not available" });
+    const client = createUploadPostClient({ apiKey: "k", fetchImpl });
+    await expect(client.pinGoogleBusinessLocation("acme", "locations/9")).rejects.toMatchObject({
+      status: 400,
+    });
+  });
+
   it("uploads photos as an async multipart request with an idempotency key", async () => {
     const fetchImpl = mockFetch(200, { success: true });
     const client = createUploadPostClient({ apiKey: "k", fetchImpl });

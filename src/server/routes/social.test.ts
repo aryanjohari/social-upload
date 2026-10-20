@@ -93,6 +93,55 @@ describe("social router", () => {
     expect(await upstream.json()).toEqual({ error: "nope", code: "PLAN_LIMIT" });
   });
 
+  it("lists Google Business locations for a profile", async () => {
+    const result = { locations: [{ id: "locations/1", name: "Acme" }], selectedLocationId: null };
+    const { app, client } = setup({ listGoogleBusinessLocations: vi.fn(async () => result) });
+    const response = await app.request("/google-business/locations?profile=acme");
+    expect(await response.json()).toEqual(result);
+    expect(client.listGoogleBusinessLocations).toHaveBeenCalledWith("acme");
+  });
+
+  it("rejects listing locations without a valid profile", async () => {
+    const { app } = setup();
+    const response = await app.request("/google-business/locations?profile=bad%20name!");
+    expect(response.status).toBe(400);
+  });
+
+  it("passes upstream failures from listing locations through", async () => {
+    const { app } = setup({
+      listGoogleBusinessLocations: vi.fn(async () => {
+        throw new UploadPostError("Unexpected response from Upload-Post", 502, "bad_response");
+      }),
+    });
+    const response = await app.request("/google-business/locations?profile=acme");
+    expect(response.status).toBe(502);
+    expect(await response.json()).toEqual({
+      error: "Unexpected response from Upload-Post",
+      code: "bad_response",
+    });
+  });
+
+  it("pins a Google Business location", async () => {
+    const { app, client } = setup({ pinGoogleBusinessLocation: vi.fn(async () => undefined) });
+    const response = await app.request("/google-business/locations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profile: "acme", locationId: "locations/1" }),
+    });
+    expect(await response.json()).toEqual({ ok: true });
+    expect(client.pinGoogleBusinessLocation).toHaveBeenCalledWith("acme", "locations/1");
+  });
+
+  it("rejects pinning with a missing location id", async () => {
+    const { app } = setup();
+    const response = await app.request("/google-business/locations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profile: "acme", locationId: "" }),
+    });
+    expect(response.status).toBe(400);
+  });
+
   it("accepts a valid upload and returns a request id", async () => {
     const { app, client } = setup();
     const response = await app.request("/upload", {
