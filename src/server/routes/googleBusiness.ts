@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
-import { CTA_TYPES, validateLocalPost } from "../lib/googleBusiness";
+import { CTA_TYPES, validateLocalPost } from "../lib/googleBusinessRules";
 import type { UploadPostClient } from "../lib/uploadPost";
 import { failure, profileName } from "./http";
 

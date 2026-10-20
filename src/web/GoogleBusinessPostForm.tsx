@@ -6,7 +6,7 @@ import {
   MAX_LOCAL_POST_SUMMARY,
   validateLocalPost,
   type CtaType,
-} from "../server/lib/googleBusiness";
+} from "../server/lib/googleBusinessRules";
 import { api } from "./api";
 import { MediaPreview } from "./MediaPreview";
 import { StatusList } from "./StatusList";

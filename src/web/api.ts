@@ -1,5 +1,6 @@
 import type { PostFormat, PostOptions } from "../server/lib/postFormats";
-import type { CtaType, GoogleBusinessLocations } from "../server/lib/googleBusiness";
+import type { GoogleBusinessLocations } from "../server/lib/googleBusiness";
+import type { CtaType } from "../server/lib/googleBusinessRules";
 import type {
   ConnectedAccount,
   FacebookPages,

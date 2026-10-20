@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAX_LOCAL_POST_SUMMARY, validateLocalPost, type LocalPostInput } from "./googleBusiness";
+import { MAX_LOCAL_POST_SUMMARY, validateLocalPost, type LocalPostInput } from "./googleBusinessRules";
 
 const valid: LocalPostInput = {
   summary: "Now open late",
