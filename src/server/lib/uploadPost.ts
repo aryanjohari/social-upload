@@ -224,7 +224,7 @@ export function createUploadPostClient({ apiKey, baseUrl, fetchImpl }: ClientOpt
   }
 
   return {
-    ...googleBusinessMethods(request, json),
+    ...googleBusinessMethods({ request, json, submitUpload }),
 
     async listProfiles(): Promise<Profile[]> {
       const data = await request("/api/uploadposts/users", profilesResponseSchema);
