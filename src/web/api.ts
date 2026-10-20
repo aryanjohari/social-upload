@@ -1,5 +1,5 @@
 import type { PostFormat, PostOptions } from "../server/lib/postFormats";
-import type { GoogleBusinessLocations } from "../server/lib/googleBusiness";
+import type { GoogleBusinessLocations, GoogleBusinessReviews } from "../server/lib/googleBusiness";
 import type { CtaType } from "../server/lib/googleBusinessRules";
 import type {
   ConnectedAccount,
@@ -13,6 +13,7 @@ export type {
   ConnectedAccount,
   FacebookPages,
   GoogleBusinessLocations,
+  GoogleBusinessReviews,
   Platform,
   PostFormat,
   PostOptions,
@@ -95,6 +96,12 @@ export const api = {
     return call<{ requestId: string }>("/google-business/post", { method: "POST", body: form }).then(
       (data) => data.requestId,
     );
+  },
+
+  googleBusinessReviews: (profile: string, pageToken?: string) => {
+    const params = new URLSearchParams({ profile });
+    if (pageToken) params.set("pageToken", pageToken);
+    return call<GoogleBusinessReviews>(`/google-business/reviews?${params}`);
   },
 
   googleBusinessLocations: (profile: string) =>

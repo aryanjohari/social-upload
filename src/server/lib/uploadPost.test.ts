@@ -226,6 +226,94 @@ describe("createUploadPostClient", () => {
     ).rejects.toMatchObject({ status: 400, message: "Multiple locations: choose one" });
   });
 
+  it("lists Google Business reviews with paging and summary figures", async () => {
+    const fetchImpl = mockFetch(200, {
+      success: true,
+      reviews: [
+        {
+          reviewId: "r1",
+          reviewer: { displayName: "Sam" },
+          starRating: "FIVE",
+          comment: "Great coffee",
+          createTime: "2026-10-01T00:00:00Z",
+          updateTime: "2026-10-02T00:00:00Z",
+          reviewReply: { comment: "Thanks Sam", updateTime: "2026-10-03T00:00:00Z" },
+        },
+        { reviewId: "r2", starRating: "TWO", createTime: "2026-09-01T00:00:00Z" },
+      ],
+      averageRating: 3.5,
+      totalReviewCount: 12,
+      nextPageToken: "next-1",
+    });
+    const client = createUploadPostClient({ apiKey: "k", fetchImpl });
+    const result = await client.listGoogleBusinessReviews("acme", {
+      pageSize: 2,
+      pageToken: "tok",
+      orderBy: "rating desc",
+    });
+    const called = new URL(lastCall(fetchImpl).url);
+    expect(called.pathname).toBe("/api/uploadposts/google-business/reviews");
+    expect(Object.fromEntries(called.searchParams)).toEqual({
+      user: "acme",
+      pageSize: "2",
+      pageToken: "tok",
+      orderBy: "rating desc",
+    });
+    expect(result.averageRating).toBe(3.5);
+    expect(result.totalCount).toBe(12);
+    expect(result.nextPageToken).toBe("next-1");
+    expect(result.reviews[0]).toEqual({
+      id: "r1",
+      stars: 5,
+      comment: "Great coffee",
+      reviewerName: "Sam",
+      createdAt: "2026-10-01T00:00:00Z",
+      reply: { comment: "Thanks Sam", updatedAt: "2026-10-03T00:00:00Z" },
+    });
+  });
+
+  it("handles a review with no comment, reviewer or reply, and an empty last page", async () => {
+    const fetchImpl = mockFetch(200, {
+      reviews: [{ reviewId: "r2", starRating: "TWO", createTime: "2026-09-01T00:00:00Z" }],
+    });
+    const client = createUploadPostClient({ apiKey: "k", fetchImpl });
+    const result = await client.listGoogleBusinessReviews("acme", {});
+    expect(result.reviews[0]).toMatchObject({ stars: 2, comment: null, reviewerName: null, reply: null });
+    expect(result.nextPageToken).toBeNull();
+    expect(result.averageRating).toBeNull();
+    expect(new URL(lastCall(fetchImpl).url).searchParams.has("pageSize")).toBe(false);
+  });
+
+  it("returns an empty review list for a location with no reviews", async () => {
+    const fetchImpl = mockFetch(200, {});
+    const client = createUploadPostClient({ apiKey: "k", fetchImpl });
+    expect(await client.listGoogleBusinessReviews("acme", {})).toEqual({
+      reviews: [],
+      averageRating: null,
+      totalCount: null,
+      nextPageToken: null,
+    });
+  });
+
+  it("surfaces an upstream error and rejects a malformed reviews response", async () => {
+    const failing = createUploadPostClient({
+      apiKey: "k",
+      fetchImpl: mockFetch(400, { error: "Location is not verified" }),
+    });
+    await expect(failing.listGoogleBusinessReviews("acme", {})).rejects.toMatchObject({
+      status: 400,
+      message: "Location is not verified",
+    });
+    const malformed = createUploadPostClient({
+      apiKey: "k",
+      fetchImpl: mockFetch(200, { reviews: "none" }),
+    });
+    await expect(malformed.listGoogleBusinessReviews("acme", {})).rejects.toMatchObject({
+      status: 502,
+      code: "bad_response",
+    });
+  });
+
   it("uploads photos as an async multipart request with an idempotency key", async () => {
     const fetchImpl = mockFetch(200, { success: true });
     const client = createUploadPostClient({ apiKey: "k", fetchImpl });

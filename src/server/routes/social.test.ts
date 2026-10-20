@@ -194,6 +194,42 @@ describe("social router", () => {
     expect(client.uploadGoogleBusinessPost).not.toHaveBeenCalled();
   });
 
+  it("lists Google Business reviews and passes paging options through", async () => {
+    const result = { reviews: [], averageRating: 4.5, totalCount: 3, nextPageToken: null };
+    const { app, client } = setup({ listGoogleBusinessReviews: vi.fn(async () => result) });
+    const response = await app.request(
+      "/google-business/reviews?profile=acme&pageSize=20&pageToken=tok&orderBy=rating%20desc",
+    );
+    expect(await response.json()).toEqual(result);
+    expect(client.listGoogleBusinessReviews).toHaveBeenCalledWith("acme", {
+      pageSize: 20,
+      pageToken: "tok",
+      orderBy: "rating desc",
+    });
+  });
+
+  it("rejects bad Google Business review queries before calling upstream", async () => {
+    const { app, client } = setup({ listGoogleBusinessReviews: vi.fn() });
+    const get = (query: string) => app.request(`/google-business/reviews?${query}`);
+    expect((await get("profile=bad%20name!")).status).toBe(400);
+    expect((await get("profile=acme&pageSize=0")).status).toBe(400);
+    expect((await get("profile=acme&pageSize=51")).status).toBe(400);
+    expect((await get("profile=acme&pageSize=abc")).status).toBe(400);
+    expect((await get("profile=acme&orderBy=name")).status).toBe(400);
+    expect(client.listGoogleBusinessReviews).not.toHaveBeenCalled();
+  });
+
+  it("passes upstream failures from listing reviews through", async () => {
+    const { app } = setup({
+      listGoogleBusinessReviews: vi.fn(async () => {
+        throw new UploadPostError("Location is not verified", 400, "upstream_error");
+      }),
+    });
+    const response = await app.request("/google-business/reviews?profile=acme");
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "Location is not verified", code: "upstream_error" });
+  });
+
   it("accepts a valid upload and returns a request id", async () => {
     const { app, client } = setup();
     const response = await app.request("/upload", {

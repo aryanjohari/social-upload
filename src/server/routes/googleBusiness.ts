@@ -1,7 +1,12 @@
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
-import { CTA_TYPES, validateLocalPost } from "../lib/googleBusinessRules";
+import {
+  CTA_TYPES,
+  MAX_REVIEW_PAGE_SIZE,
+  REVIEW_ORDERS,
+  validateLocalPost,
+} from "../lib/googleBusinessRules";
 import type { UploadPostClient } from "../lib/uploadPost";
 import { failure, profileName } from "./http";
 
@@ -15,6 +20,13 @@ const ctaTypeSchema = z.enum(CTA_TYPES);
 
 // Upload-Post documents no photo size limit; this only bounds what the server will buffer.
 const POST_BODY_LIMIT_BYTES = 20 * 1024 * 1024;
+
+const reviewsQuery = z.object({
+  profile: profileName,
+  pageSize: z.coerce.number().int().min(1).max(MAX_REVIEW_PAGE_SIZE).optional(),
+  pageToken: z.string().min(1).max(2000).optional(),
+  orderBy: z.enum(REVIEW_ORDERS).optional(),
+});
 
 const pinLocationBody = z.object({ profile: profileName, locationId: z.string().min(1).max(200) });
 
@@ -33,6 +45,13 @@ export function createGoogleBusinessRouter({ client, connectReturnUrl }: GoogleB
     const profile = profileName.safeParse(c.req.query("profile"));
     if (!profile.success) return failure(400, "Invalid profile", "invalid_profile");
     return c.json(await client.listGoogleBusinessLocations(profile.data));
+  });
+
+  app.get("/reviews", async (c) => {
+    const query = reviewsQuery.safeParse(c.req.query());
+    if (!query.success) return failure(400, "Invalid reviews request", "invalid_request");
+    const { profile, ...options } = query.data;
+    return c.json(await client.listGoogleBusinessReviews(profile, options));
   });
 
   app.post("/locations", async (c) => {
